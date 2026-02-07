@@ -9,7 +9,14 @@ from io import BytesIO
 import sys
 import os
 import pickle
+import json
+import base64
 from pathlib import Path
+
+import requests as http_requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Добавляем путь к модулям
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -569,6 +576,168 @@ if st.session_state.edited is not None:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+
+# ============ Секретный инструмент: PDF → Word (в сайдбаре) ============
+with st.sidebar:
+    st.markdown("#### PDF → Word")
+    st.caption("Извлечение таблиц из PDF через Claude Opus")
+
+    _api_key = os.getenv("OPENROUTER_API_KEY", "")
+    _pdf_file = st.file_uploader("PDF файл", type=['pdf'], key="secret_pdf")
+
+    _process = st.button("Обработать", key="process_pdf_btn", use_container_width=True)
+
+    if _process:
+        if not _api_key:
+            st.error("Введите API ключ")
+        elif not _pdf_file:
+            st.error("Загрузите PDF")
+        else:
+            with st.spinner("Claude Opus анализирует PDF..."):
+                _error_msg = None
+                _raw_content = None
+                try:
+                    _pdf_bytes = _pdf_file.read()
+                    _pdf_b64 = base64.b64encode(_pdf_bytes).decode()
+
+                    _prompt = (
+                        "Извлеки ВСЕ таблицы из этого PDF документа. "
+                        "Верни результат СТРОГО в JSON формате без markdown обёрток:\n"
+                        '{"tables": [{"name": "Название таблицы или пустая строка", '
+                        '"headers": ["Столбец1", "Столбец2"], '
+                        '"rows": [["значение1", "значение2"]]}]}\n\n'
+                        "ВАЖНО:\n"
+                        "- Сохрани ВСЕ данные точно как в оригинале\n"
+                        "- Числа оставь как строки\n"
+                        "- Объединённые ячейки раздели на отдельные\n"
+                        "- Порядок столбцов и строк точно как в оригинале\n"
+                        "- Все таблицы из документа\n"
+                        "- НЕ оборачивай в ```json``` — чистый JSON"
+                    )
+
+                    _resp = http_requests.post(
+                        'https://openrouter.ai/api/v1/chat/completions',
+                        headers={
+                            'Authorization': f'Bearer {_api_key}',
+                            'Content-Type': 'application/json',
+                            'HTTP-Referer': 'https://krechet.space',
+                        },
+                        json={
+                            'model': 'anthropic/claude-opus-4-6',
+                            'messages': [{
+                                'role': 'user',
+                                'content': [
+                                    {
+                                        'type': 'file',
+                                        'file': {
+                                            'filename': _pdf_file.name,
+                                            'content': _pdf_b64
+                                        }
+                                    },
+                                    {
+                                        'type': 'text',
+                                        'text': _prompt
+                                    }
+                                ]
+                            }],
+                            'max_tokens': 32000,
+                            'temperature': 0,
+                        },
+                        timeout=180
+                    )
+
+                    if _resp.status_code != 200:
+                        _error_msg = f"Ошибка API ({_resp.status_code})"
+                        _raw_content = _resp.text[:1500]
+                    else:
+                        _data = _resp.json()
+                        _raw_content = _data.get('choices', [{}])[0].get('message', {}).get('content', '')
+
+                        if not _raw_content:
+                            _error_msg = "Пустой ответ от AI"
+                        else:
+                            _cleaned = _raw_content.strip()
+                            if _cleaned.startswith('```'):
+                                _cleaned = _cleaned.split('\n', 1)[-1]
+                            if _cleaned.endswith('```'):
+                                _cleaned = _cleaned.rsplit('```', 1)[0]
+                            _cleaned = _cleaned.strip()
+
+                            _tables_data = json.loads(_cleaned)
+
+                            if not _tables_data.get('tables'):
+                                _error_msg = "Таблицы не найдены в документе"
+                            else:
+                                from docx import Document as DocxDoc
+                                from docx.shared import Pt
+
+                                doc = DocxDoc()
+                                for tbl in _tables_data['tables']:
+                                    if tbl.get('name'):
+                                        doc.add_heading(tbl['name'], level=2)
+
+                                    headers = tbl.get('headers', [])
+                                    rows = tbl.get('rows', [])
+                                    col_count = max(
+                                        len(headers),
+                                        max((len(r) for r in rows), default=0)
+                                    )
+
+                                    if col_count == 0:
+                                        continue
+
+                                    row_count = len(rows) + (1 if headers else 0)
+                                    t = doc.add_table(rows=row_count, cols=col_count)
+                                    t.style = 'Table Grid'
+
+                                    if headers:
+                                        for i, h in enumerate(headers):
+                                            if i < col_count:
+                                                cell = t.rows[0].cells[i]
+                                                cell.text = str(h)
+                                                for p in cell.paragraphs:
+                                                    for run in p.runs:
+                                                        run.bold = True
+                                                        run.font.size = Pt(10)
+
+                                    start_row = 1 if headers else 0
+                                    for ri, row in enumerate(rows):
+                                        for ci, val in enumerate(row):
+                                            if ci < col_count:
+                                                cell = t.rows[start_row + ri].cells[ci]
+                                                cell.text = str(val or '')
+                                                for p in cell.paragraphs:
+                                                    for run in p.runs:
+                                                        run.font.size = Pt(10)
+
+                                    doc.add_paragraph()
+
+                                _buf = BytesIO()
+                                doc.save(_buf)
+                                st.session_state._pdf_docx = _buf.getvalue()
+                                st.session_state._pdf_name = _pdf_file.name.replace('.pdf', '.docx')
+                                st.success(f"Найдено таблиц: {len(_tables_data['tables'])}")
+
+                except json.JSONDecodeError:
+                    _error_msg = "Не удалось распознать ответ AI как JSON"
+                except Exception as e:
+                    _error_msg = str(e)
+
+                if _error_msg:
+                    st.error(_error_msg)
+                    if _raw_content:
+                        with st.expander("Ответ AI"):
+                            st.code(_raw_content[:3000])
+
+    if st.session_state.get('_pdf_docx'):
+        st.download_button(
+            "Скачать Word",
+            data=st.session_state._pdf_docx,
+            file_name=st.session_state.get('_pdf_name', 'result.docx'),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+            key="download_pdf_docx"
+        )
 
 # Подвал
 st.divider()
