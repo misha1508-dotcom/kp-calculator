@@ -197,9 +197,6 @@ def parse_competitor_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
         if total == 0:
             total = qty * price
 
-        # Убираем ГОСТ и коды из названия
-        product_name = re.sub(r'ГОСТ\s*[РР]?\s*[\d\-\.]+', '', product_name, flags=re.IGNORECASE)
-        product_name = re.sub(r'\d{2}\.\d{2}\.\d{2}', '', product_name)
         product_name = ' '.join(product_name.split()).strip()
 
         if len(product_name) < 3:

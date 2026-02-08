@@ -137,12 +137,7 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
                 if desc_value and desc_value != 'nan':
                     description += " " + desc_value
 
-        # Если описания в отдельной колонке нет, ищем в самом названии
-        if not description and product_name:
-            parts = product_name.split('ГОСТ')
-            if len(parts) > 1:
-                product_name = parts[0].strip()
-                description = 'ГОСТ' + parts[1].strip()
+        # Описание из отдельных колонок (выше). Название НЕ трогаем.
 
         # Ищем количество
         for col in main_table.columns:
@@ -163,17 +158,6 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
         # Валидация
         if not product_name or product_name == 'nan':
             continue
-
-        if qty <= 0:
-            # Ищем количество только в колонках, похожих на "кол-во", НЕ в ценовых
-            for col in main_table.columns:
-                col_lower = str(col).lower()
-                if 'цена' in col_lower or 'стоимость' in col_lower or 'сумма' in col_lower:
-                    continue
-                val = clean_number(row[col])
-                if 10 < val < 100000:
-                    qty = val
-                    break
 
         if qty <= 0:
             print(f"    ⚠️ Кол-во <= 0 для «{product_name[:50]}», строка {idx} — ставим 0")

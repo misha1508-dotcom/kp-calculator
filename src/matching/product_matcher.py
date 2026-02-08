@@ -347,8 +347,8 @@ def match_products(
         unit = str(request_row.get('Ед.изм.', '') or '')
 
         if not product_name or product_name == 'nan':
-            print(f"  ⚠️ Пустое название, строка {idx}")
-            product_name = f"(позиция {idx + 1} — без названия)"
+            print(f"  ⚠️ Пустое название, строка {idx} — пропускаем")
+            continue
 
         # Ищем себестоимость
         cost_match, cost_score, cost_name = find_best_match(product_name, cost_df, 'Наименование')
