@@ -338,22 +338,22 @@ def match_products(
     """
     result_data = []
 
+    print(f"  Входных позиций: {len(request_df)}")
+
     for idx, request_row in request_df.iterrows():
-        product_name = str(request_row.get('Наименование', ''))
+        product_name = str(request_row.get('Наименование', '') or '')
         qty = float(request_row.get('Кол-во', 0) or 0)
         description = str(request_row.get('Описание', '') or '')
         unit = str(request_row.get('Ед.изм.', 'кг') or 'кг')
 
         if not product_name or product_name == 'nan':
-            continue
+            print(f"  ⚠️ Пустое название, строка {idx}")
+            product_name = f"(позиция {idx + 1} — без названия)"
 
         if qty > 100000:
             old_qty = qty
             qty = qty / 1000 if qty > 1000000 else qty / 100
             print(f"  ⚠️ Кол-во скорректировано: {old_qty} → {qty} для «{product_name[:50]}»")
-        if qty <= 0:
-            print(f"  ⚠️ Кол-во <= 0, пропускаем: {product_name[:50]}")
-            continue
 
         # Ищем себестоимость
         cost_match, cost_score, cost_name = find_best_match(product_name, cost_df, 'Наименование')
