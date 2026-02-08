@@ -162,8 +162,7 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
 
         # Валидация
         if not product_name or product_name == 'nan':
-            print(f"    ⚠️ Пустое название, строка {idx} — ставим placeholder")
-            product_name = f"(позиция {idx + 1} — без названия)"
+            continue
 
         if qty <= 0:
             # Ищем количество только в колонках, похожих на "кол-во", НЕ в ценовых
