@@ -162,6 +162,7 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
 
         # Валидация
         if not product_name or product_name == 'nan':
+            print(f"    ⚠️ Пустое название, строка {idx} — пропускаем")
             continue
 
         if qty <= 0:
@@ -176,14 +177,19 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
                     break
 
         if qty <= 0:
-            continue
+            print(f"    ⚠️ Кол-во <= 0 для «{product_name[:50]}», строка {idx} — ставим 0")
+            qty = 0
 
-        # Очищаем название
+        # Очищаем название (для отображения), но дедупликацию делаем по оригиналу
+        original_name = product_name
         product_name = clean_product_name(product_name)
+        if not product_name:
+            product_name = original_name  # clean_product_name обнулила — возвращаем оригинал
 
-        # Проверка на дубликаты
-        name_key = product_name.lower().strip()
+        # Проверка на дубликаты — по оригинальному названию, НЕ по очищенному
+        name_key = original_name.lower().strip()
         if name_key in found_products:
+            print(f"    ⚠️ Дубликат: «{product_name[:50]}» — пропускаем")
             continue
         found_products.add(name_key)
 
