@@ -1,6 +1,6 @@
 """
 Сервис расчёта КП с автоматическим ценообразованием
-Единая таблица для РБ и ФБ контрактов
+Раздельные таблицы для РБ и ФБ контрактов
 """
 
 import streamlit as st
@@ -83,7 +83,27 @@ st.markdown("""
         color: #1e3a5f !important;
         border-radius: 5px;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
+    }
+    .contract-header-rb {
+        font-size: 1.2rem;
+        font-weight: bold;
+        padding: 0.5rem;
+        background: #dbeafe;
+        color: #1e40af !important;
+        border-radius: 5px;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .contract-header-fb {
+        font-size: 1.2rem;
+        font-weight: bold;
+        padding: 0.5rem;
+        background: #dcfce7;
+        color: #166534 !important;
+        border-radius: 5px;
+        text-align: center;
+        margin-bottom: 0.5rem;
     }
     .stDataFrame, [data-testid="stDataFrame"] {
         width: 100% !important;
@@ -128,22 +148,64 @@ st.markdown("""
     .metric-value.red { color: #C62828 !important; }
     .metric-value.teal { color: #00695C !important; }
     .metric-value.gray { color: #546E7A !important; }
+    .summary-row {
+        display: flex;
+        gap: 10px;
+        margin: 0.3rem 0;
+    }
+    .summary-card {
+        flex: 1;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        background: #fafafa;
+    }
+    .summary-card.rb { border-left: 4px solid #1565C0; }
+    .summary-card.fb { border-left: 4px solid #2E7D32; }
+    .summary-card.total { border-left: 4px solid #00695C; background: #f0fdf4; }
+    .summary-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #333 !important;
+        margin-bottom: 6px;
+    }
+    .summary-line {
+        font-size: 0.85rem;
+        color: #444 !important;
+        line-height: 1.6;
+    }
+    .summary-line b { font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
 # Заголовок
 st.markdown('<div class="main-header">📊 Сервис расчёта коммерческих предложений</div>', unsafe_allow_html=True)
 
-# Инициализация состояния - загрузка с диска
+# Инициализация состояния — загрузка с диска
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     st.session_state.cost_data = load_data('cost_data')
     st.session_state.competitor_data = load_data('competitor_data')
     st.session_state.rb_request = load_data('rb_request')
     st.session_state.fb_request = load_data('fb_request')
-    st.session_state.calculated = load_data('calculated')
-    st.session_state.edited = load_data('edited')
+    st.session_state.rb_data = load_data('rb_data')
+    st.session_state.fb_data = load_data('fb_data')
     st.session_state.loaded_files = load_data('loaded_files') or {'cost': None, 'competitor': None, 'rb': None, 'fb': None}
+
+    # Миграция со старого формата (единая таблица → раздельные)
+    if st.session_state.rb_data is None and st.session_state.fb_data is None:
+        old = load_data('edited') or load_data('calculated')
+        if old is not None and 'Контракт' in old.columns:
+            rb = old[old['Контракт'] == 'РБ'].copy()
+            fb = old[old['Контракт'] == 'ФБ'].copy()
+            if len(rb) > 0:
+                rb['№'] = range(1, len(rb) + 1)
+                st.session_state.rb_data = rb
+                save_data('rb_data', rb)
+            if len(fb) > 0:
+                fb['№'] = range(1, len(fb) + 1)
+                st.session_state.fb_data = fb
+                save_data('fb_data', fb)
 
 # ============ ШАГ 1: Загрузка общих документов ============
 col_step1_title, col_step1_clear = st.columns([6, 1])
@@ -315,7 +377,7 @@ with col_fb:
             except Exception as e:
                 st.error(f"Ошибка: {e}")
 
-# Кнопка расчёта
+# ============ Кнопка расчёта ============
 st.divider()
 if st.button("🧮 Рассчитать КП", type="primary", use_container_width=True):
     if st.session_state.cost_data is None:
@@ -326,58 +388,55 @@ if st.button("🧮 Рассчитать КП", type="primary", use_container_wid
         st.error("Загрузите хотя бы один запрос КП (РБ или ФБ)")
     else:
         with st.spinner("Расчёт..."):
-            dfs = []
-
-            # Матчинг и расчёт цен РАЗДЕЛЬНО по контрактам
-            # (скидка 0.1% должна быть по каждому контракту отдельно)
+            # РБ
             if st.session_state.rb_request is not None:
                 matched_rb = match_products(
                     st.session_state.rb_request,
                     st.session_state.cost_data,
                     st.session_state.competitor_data
                 )
-                matched_rb['Контракт'] = 'РБ'
                 priced_rb = calculate_prices(matched_rb)
-                dfs.append(priced_rb)
+                priced_rb['Контракт'] = 'РБ'
+                priced_rb['№'] = range(1, len(priced_rb) + 1)
+                st.session_state.rb_data = priced_rb
+                save_data('rb_data', priced_rb)
 
+            # ФБ
             if st.session_state.fb_request is not None:
                 matched_fb = match_products(
                     st.session_state.fb_request,
                     st.session_state.cost_data,
                     st.session_state.competitor_data
                 )
-                matched_fb['Контракт'] = 'ФБ'
                 priced_fb = calculate_prices(matched_fb)
-                dfs.append(priced_fb)
+                priced_fb['Контракт'] = 'ФБ'
+                priced_fb['№'] = range(1, len(priced_fb) + 1)
+                st.session_state.fb_data = priced_fb
+                save_data('fb_data', priced_fb)
 
-            # Объединяем и перенумеровываем
-            combined = pd.concat(dfs, ignore_index=True)
-            combined['№'] = range(1, len(combined) + 1)
-
-            st.session_state.calculated = combined
-            st.session_state.edited = st.session_state.calculated.copy()
-            save_data('calculated', st.session_state.calculated)
-            save_data('edited', st.session_state.edited)
+            # Очистить старые ключи editor-ов
+            for key in ['rb_editor', 'fb_editor']:
+                if key in st.session_state:
+                    del st.session_state[key]
 
         st.success("✅ Расчёт выполнен!")
         st.rerun()
 
-# ============ ШАГ 2: Единая таблица ============
-if st.session_state.edited is not None:
-    st.divider()
-    st.subheader("📝 Шаг 2: Редактирование данных")
-    st.caption("Можно изменить значения в таблице. После изменений нажмите 'Пересчитать'.")
 
-    # Метрики
-    econ = calculate_economics(st.session_state.edited)
+# ============ ФУНКЦИИ ДЛЯ ОТРИСОВКИ ============
+
+def render_mini_dashboard(df, container):
+    """Компактный дашборд для одного контракта"""
+    econ = calculate_economics(df)
     margin_color = "green" if econ['margin_percent'] >= 0 else "red"
-    profit_color = "green" if econ['profit'] >= 0 else "red"
-    comp_margin_color = "green" if econ['competitor_margin'] >= 0 else "red"
     loss_color = "red" if econ['loss_positions'] > 0 else "green"
 
-    # Ряд 1: Суммы + скидка
-    st.markdown(f"""
+    container.markdown(f"""
     <div class="metrics-row">
+        <div class="metric-card">
+            <div class="metric-label">Позиций</div>
+            <div class="metric-value gray">{econ['total_positions']} (конк. {econ['positions_with_comp']})</div>
+        </div>
         <div class="metric-card">
             <div class="metric-label">Сумма контракта</div>
             <div class="metric-value teal">{econ['contract_total']:,.0f} ₽</div>
@@ -387,67 +446,42 @@ if st.session_state.edited is not None:
             <div class="metric-value gray">{econ['cost_total']:,.0f} ₽</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Сумма конкурента</div>
-            <div class="metric-value blue">{econ['competitor_total']:,.0f} ₽</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Мы по позициям конкурента</div>
-            <div class="metric-value blue">{econ['our_comp_total']:,.0f} ₽</div>
+            <div class="metric-label">Маржа</div>
+            <div class="metric-value {margin_color}">{econ['profit']:,.0f} ₽ ({econ['margin_percent']:.1f}%)</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Скидка от конкурента</div>
             <div class="metric-value orange">{econ['discount_percent']:.2f}%</div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Ряд 2: Маржа + позиции
-    st.markdown(f"""
-    <div class="metrics-row">
-        <div class="metric-card">
-            <div class="metric-label">Товарная маржа (контракт)</div>
-            <div class="metric-value {profit_color}">{econ['profit']:,.0f} ₽ ({econ['margin_percent']:.1f}%)</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Маржа конкурента</div>
-            <div class="metric-value {comp_margin_color}">{econ['competitor_margin']:,.0f} ₽ ({econ['competitor_margin_percent']:.1f}%)</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Позиций</div>
-            <div class="metric-value gray">{econ['total_positions']} (с конк. {econ['positions_with_comp']})</div>
-        </div>
         <div class="metric-card">
             <div class="metric-label">Убыточных</div>
             <div class="metric-value {loss_color}">{econ['loss_positions']} шт / {econ['loss_total_rub']:,.0f} ₽</div>
         </div>
-        <div class="metric-card">
-            <div class="metric-label">Медианный убыток / поз.</div>
-            <div class="metric-value {loss_color}">{econ['median_loss']:,.2f} ₽</div>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Наценка для позиций без конкурента
-    if 'markup_percent' not in st.session_state:
-        st.session_state.markup_percent = 30.0
-    st.session_state.markup_percent = st.number_input(
-        "Наценка на позиции без конкурента (%)",
-        min_value=0.0, max_value=200.0, value=st.session_state.markup_percent, step=1.0,
-        help="Наша цена = себестоимость + N%. Применяется при нажатии 'Пересчитать'",
-        key="markup_input"
-    )
 
-    # Подготовка таблицы для отображения
-    display_df = st.session_state.edited.copy()
-    display_df['Товарная маржа %'] = ((display_df['Наша цена'] - display_df['Себестоимость']) / display_df['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
-    display_df['Товарная маржа руб'] = ((display_df['Наша цена'] - display_df['Себестоимость']) * display_df['Кол-во']).round(2)
+def render_contract_section(state_key, label, emoji, header_class, editor_key):
+    """Секция контракта: дашборд + таблица + управление"""
+    df = st.session_state.get(state_key)
+    if df is None:
+        return
+
+    st.markdown(f'<div class="{header_class}">{emoji} {label}</div>', unsafe_allow_html=True)
+
+    # Плейсхолдер для дашборда (заполним после таблицы, чтобы данные были актуальные)
+    dashboard_placeholder = st.container()
+
+    # Подготовка таблицы
+    display_df = df.copy()
+    display_df['Маржа %'] = ((display_df['Наша цена'] - display_df['Себестоимость']) / display_df['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
+    display_df['Маржа руб'] = ((display_df['Наша цена'] - display_df['Себестоимость']) * display_df['Кол-во']).round(2)
 
     if 'Описание' not in display_df.columns:
         display_df['Описание'] = ''
 
-    # Колонки для отображения
-    edit_columns = ['Наименование', 'Контракт', 'Описание', 'Ед.изм.', 'Кол-во', 'Себестоимость',
-                    'Цена конкурента', 'Наша цена', 'Товарная маржа %', 'Товарная маржа руб', 'Тара', 'Матч']
+    edit_columns = ['Наименование', 'Описание', 'Ед.изм.', 'Кол-во', 'Себестоимость',
+                    'Цена конкурента', 'Наша цена', 'Маржа %', 'Маржа руб', 'Тара', 'Матч']
     edit_columns = [c for c in edit_columns if c in display_df.columns]
     show_df = display_df[edit_columns].copy()
 
@@ -455,81 +489,178 @@ if st.session_state.edited is not None:
         show_df,
         num_rows="fixed",
         use_container_width=True,
-        key="main_editor",
-        height=600,
-        disabled=['Контракт', 'Товарная маржа %', 'Товарная маржа руб', 'Тара', 'Матч'],
+        key=editor_key,
+        height=500,
+        disabled=['Маржа %', 'Маржа руб', 'Тара', 'Матч'],
         column_config={
             "Наименование": st.column_config.TextColumn("Наименование", width="large"),
-            "Контракт": st.column_config.TextColumn("Контракт", width="small"),
             "Описание": st.column_config.TextColumn("Описание", width="large"),
             "Ед.изм.": st.column_config.TextColumn("Ед.изм.", width="small"),
             "Кол-во": st.column_config.NumberColumn("Кол-во", format="%.1f", step=1, width="small"),
             "Себестоимость": st.column_config.NumberColumn("Себес", format="%.2f", step=0.5, width="small"),
             "Цена конкурента": st.column_config.NumberColumn("Конкурент", format="%.2f", step=0.5, width="small"),
             "Наша цена": st.column_config.NumberColumn("Наша цена", format="%.2f", step=0.5, width="small"),
-            "Товарная маржа %": st.column_config.NumberColumn("Маржа %", format="%.1f", width="small"),
-            "Товарная маржа руб": st.column_config.NumberColumn("Прибыль/убыток поз.", format="%.0f", width="medium"),
-            "Тара": st.column_config.TextColumn("Тара", width="large", help="Вопросы по таре/упаковке — пересчёт себестоимости"),
-            "Матч": st.column_config.TextColumn("Матч (проверка)", width="large", help="С чем сматчился товар и скор совпадения"),
+            "Маржа %": st.column_config.NumberColumn("Маржа %", format="%.1f", width="small"),
+            "Маржа руб": st.column_config.NumberColumn("Маржа руб", format="%.0f", width="small"),
+            "Тара": st.column_config.TextColumn("Тара", width="large"),
+            "Матч": st.column_config.TextColumn("Матч", width="large"),
         }
     )
 
-    # Обновляем данные после редактирования
+    # Синхронизируем правки в state
     for col in ['Наименование', 'Описание', 'Ед.изм.', 'Кол-во', 'Себестоимость', 'Наша цена', 'Цена конкурента']:
         if col in edited.columns:
-            st.session_state.edited[col] = edited[col]
+            st.session_state[state_key][col] = edited[col]
+    save_data(state_key, st.session_state[state_key])
 
-    # Кнопки: пересчёт + скачать таблицу
-    col_recalc, col_download = st.columns([3, 1])
-    with col_download:
-        # Экспорт текущей таблицы как есть в Excel
-        export_df = st.session_state.edited.copy()
-        export_df['Товарная маржа %'] = ((export_df['Наша цена'] - export_df['Себестоимость']) / export_df['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
-        export_df['Товарная маржа руб'] = ((export_df['Наша цена'] - export_df['Себестоимость']) * export_df['Кол-во']).round(2)
-        export_cols = ['Наименование', 'Контракт', 'Ед.изм.', 'Кол-во', 'Себестоимость',
-                       'Цена конкурента', 'Наша цена', 'Товарная маржа %', 'Товарная маржа руб']
-        export_cols = [c for c in export_cols if c in export_df.columns]
-        buf = BytesIO()
-        export_df[export_cols].to_excel(buf, index=False, sheet_name='Таблица КП')
-        st.download_button(
-            "📥 Скачать таблицу Excel",
-            data=buf.getvalue(),
-            file_name="Таблица_КП.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+    # Заполняем дашборд (теперь с актуальными данными после синхронизации)
+    render_mini_dashboard(st.session_state[state_key], dashboard_placeholder)
+
+    # Управление: наценка + пересчитать + скачать таблицу
+    markup_key = f'markup_{state_key}'
+    if markup_key not in st.session_state:
+        st.session_state[markup_key] = 30.0
+
+    col_markup, col_recalc, col_download = st.columns([2, 2, 1])
+    with col_markup:
+        st.session_state[markup_key] = st.number_input(
+            "Наценка без конкурента (%)",
+            min_value=0.0, max_value=200.0, value=st.session_state[markup_key], step=1.0,
+            key=f"markup_input_{state_key}"
         )
     with col_recalc:
-        recalc_clicked = st.button("🔄 Пересчитать", use_container_width=True)
-    if recalc_clicked:
-        # Применяем наценку к позициям без конкурента
-        markup = st.session_state.markup_percent / 100
-        for idx in st.session_state.edited.index:
-            comp = float(st.session_state.edited.at[idx, 'Цена конкурента'] or 0)
-            cost = float(st.session_state.edited.at[idx, 'Себестоимость'] or 0)
-            if comp <= 0 and cost > 0:
-                st.session_state.edited.at[idx, 'Наша цена'] = round(cost * (1 + markup), 2)
-        # Пересчёт производных колонок
-        st.session_state.edited['Сумма'] = (st.session_state.edited['Наша цена'] * st.session_state.edited['Кол-во']).round(2)
-        st.session_state.edited['Маржа'] = (st.session_state.edited['Наша цена'] - st.session_state.edited['Себестоимость']).round(2)
-        st.session_state.edited['Маржа %'] = (st.session_state.edited['Маржа'] / st.session_state.edited['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
-        save_data('edited', st.session_state.edited)
-        st.rerun()
+        if st.button("🔄 Пересчитать", key=f"recalc_{state_key}", use_container_width=True):
+            markup = st.session_state[markup_key] / 100
+            data = st.session_state[state_key]
+            for idx in data.index:
+                comp = float(data.at[idx, 'Цена конкурента'] or 0)
+                cost = float(data.at[idx, 'Себестоимость'] or 0)
+                if comp <= 0 and cost > 0:
+                    data.at[idx, 'Наша цена'] = round(cost * (1 + markup), 2)
+            data['Сумма'] = (data['Наша цена'] * data['Кол-во']).round(2)
+            data['Маржа'] = (data['Наша цена'] - data['Себестоимость']).round(2)
+            data['Маржа %'] = (data['Маржа'] / data['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
+            save_data(state_key, data)
+            st.rerun()
+    with col_download:
+        export_cols = ['Наименование', 'Ед.изм.', 'Кол-во', 'Себестоимость',
+                       'Цена конкурента', 'Наша цена']
+        export_cols = [c for c in export_cols if c in st.session_state[state_key].columns]
+        buf = BytesIO()
+        export_df = st.session_state[state_key][export_cols].copy()
+        export_df['Маржа %'] = ((st.session_state[state_key]['Наша цена'] - st.session_state[state_key]['Себестоимость']) / st.session_state[state_key]['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
+        export_df['Маржа руб'] = ((st.session_state[state_key]['Наша цена'] - st.session_state[state_key]['Себестоимость']) * st.session_state[state_key]['Кол-во']).round(2)
+        export_df.to_excel(buf, index=False, sheet_name=label)
+        st.download_button(
+            "📥 Excel",
+            data=buf.getvalue(),
+            file_name=f"Таблица_{label}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key=f"dl_table_{state_key}"
+        )
 
-# ============ ШАГ 3: Генерация документов ============
-if st.session_state.edited is not None:
+
+# ============ ШАГ 2: Таблицы и дашборды ============
+
+has_rb = st.session_state.get('rb_data') is not None
+has_fb = st.session_state.get('fb_data') is not None
+
+if has_rb or has_fb:
+    st.divider()
+    st.subheader("📊 Сводка")
+
+    # Общий дашборд
+    if has_rb and has_fb:
+        rb_econ = calculate_economics(st.session_state.rb_data)
+        fb_econ = calculate_economics(st.session_state.fb_data)
+        combined = pd.concat([st.session_state.rb_data, st.session_state.fb_data], ignore_index=True)
+        total_econ = calculate_economics(combined)
+        total_margin_color = "green" if total_econ['margin_percent'] >= 0 else "red"
+        total_loss_color = "red" if total_econ['loss_positions'] > 0 else "green"
+
+        st.markdown(f"""
+        <div class="summary-row">
+            <div class="summary-card rb">
+                <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
+                <div class="summary-line">
+                    Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                    Скидка: <b>{rb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
+                    Убыт.: <b>{rb_econ['loss_positions']}</b>
+                </div>
+            </div>
+            <div class="summary-card fb">
+                <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
+                <div class="summary-line">
+                    Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                    Скидка: <b>{fb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
+                    Убыт.: <b>{fb_econ['loss_positions']}</b>
+                </div>
+            </div>
+            <div class="summary-card total">
+                <div class="summary-title">ИТОГО — {total_econ['total_positions']} поз.</div>
+                <div class="summary-line">
+                    Сумма: <b>{total_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Себес: <b>{total_econ['cost_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Маржа: <b>{total_econ['profit']:,.0f} ₽</b> ({total_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                    Убыт.: <b>{total_econ['loss_positions']}</b>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif has_rb:
+        rb_econ = calculate_economics(st.session_state.rb_data)
+        st.markdown(f"""
+        <div class="summary-row">
+            <div class="summary-card rb">
+                <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
+                <div class="summary-line">
+                    Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                    Скидка: <b>{rb_econ['discount_percent']:.2f}%</b>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif has_fb:
+        fb_econ = calculate_economics(st.session_state.fb_data)
+        st.markdown(f"""
+        <div class="summary-row">
+            <div class="summary-card fb">
+                <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
+                <div class="summary-line">
+                    Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                    Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                    Скидка: <b>{fb_econ['discount_percent']:.2f}%</b>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.caption("Редактируйте данные в таблицах ниже. Дашборд обновляется автоматически.")
+
+    # Секции контрактов
+    if has_rb:
+        st.divider()
+        render_contract_section('rb_data', 'РБ', '🔵', 'contract-header-rb', 'rb_editor')
+
+    if has_fb:
+        st.divider()
+        render_contract_section('fb_data', 'ФБ', '🟢', 'contract-header-fb', 'fb_editor')
+
+    # ============ ШАГ 3: Скачать документы ============
     st.divider()
     st.subheader("📥 Шаг 3: Скачать документы")
 
-    df = st.session_state.edited
-    has_rb = 'Контракт' in df.columns and (df['Контракт'] == 'РБ').any()
-    has_fb = 'Контракт' in df.columns and (df['Контракт'] == 'ФБ').any()
+    download_cols = st.columns(4)
+    col_idx = 0
 
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        if has_rb:
-            rb_df = df[df['Контракт'] == 'РБ'].copy()
-            rb_df['№'] = range(1, len(rb_df) + 1)
+    if has_rb:
+        rb_df = st.session_state.rb_data.copy()
+        rb_df['№'] = range(1, len(rb_df) + 1)
+        with download_cols[col_idx]:
             docx_rb = export_kp_to_docx(rb_df, "РБ")
             st.download_button(
                 "📄 КП_РБ.docx",
@@ -538,24 +669,8 @@ if st.session_state.edited is not None:
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
             )
-
-    with col2:
-        if has_fb:
-            fb_df = df[df['Контракт'] == 'ФБ'].copy()
-            fb_df['№'] = range(1, len(fb_df) + 1)
-            docx_fb = export_kp_to_docx(fb_df, "ФБ")
-            st.download_button(
-                "📄 КП_ФБ.docx",
-                data=docx_fb,
-                file_name="КП_ФБ.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True
-            )
-
-    with col3:
-        if has_rb:
-            rb_df = df[df['Контракт'] == 'РБ'].copy()
-            rb_df['№'] = range(1, len(rb_df) + 1)
+        col_idx += 1
+        with download_cols[col_idx]:
             excel_rb = export_kp_to_excel(rb_df, "РБ")
             st.download_button(
                 "📥 Excel РБ",
@@ -564,11 +679,22 @@ if st.session_state.edited is not None:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+        col_idx += 1
 
-    with col4:
-        if has_fb:
-            fb_df = df[df['Контракт'] == 'ФБ'].copy()
-            fb_df['№'] = range(1, len(fb_df) + 1)
+    if has_fb:
+        fb_df = st.session_state.fb_data.copy()
+        fb_df['№'] = range(1, len(fb_df) + 1)
+        with download_cols[col_idx]:
+            docx_fb = export_kp_to_docx(fb_df, "ФБ")
+            st.download_button(
+                "📄 КП_ФБ.docx",
+                data=docx_fb,
+                file_name="КП_ФБ.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+        col_idx += 1
+        with download_cols[col_idx]:
             excel_fb = export_kp_to_excel(fb_df, "ФБ")
             st.download_button(
                 "📥 Excel ФБ",
@@ -744,7 +870,7 @@ with st.sidebar:
 st.divider()
 col_footer, col_clear = st.columns([4, 1])
 with col_footer:
-    st.caption("© 2026 Сервис расчёта КП | v3.0 | Данные сохраняются автоматически")
+    st.caption("© 2026 Сервис расчёта КП | v4.0 | Данные сохраняются автоматически")
 with col_clear:
     if st.button("🗑️ Очистить всё", type="secondary"):
         for f in CACHE_DIR.glob("*.pkl"):
