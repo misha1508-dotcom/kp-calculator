@@ -218,7 +218,7 @@ def parse_competitor_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
         data.append({
             '№': len(data) + 1,
             '⚡': check_status,
-            'Наименование': product_name[:100],
+            'Наименование': product_name,
             'Кол-во': qty,
             'Ед.изм.': unit,
             'Цена': price,
