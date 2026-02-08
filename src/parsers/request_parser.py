@@ -120,7 +120,7 @@ def parse_request_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
         product_name = ""
         description = ""
         qty = 0
-        unit = "кг"
+        unit = ""
 
         # Ищем наименование товара
         for col in main_table.columns:

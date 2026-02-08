@@ -344,7 +344,7 @@ def match_products(
         product_name = str(request_row.get('Наименование', '') or '')
         qty = float(request_row.get('Кол-во', 0) or 0)
         description = str(request_row.get('Описание', '') or '')
-        unit = str(request_row.get('Ед.изм.', 'кг') or 'кг')
+        unit = str(request_row.get('Ед.изм.', '') or '')
 
         if not product_name or product_name == 'nan':
             print(f"  ⚠️ Пустое название, строка {idx}")

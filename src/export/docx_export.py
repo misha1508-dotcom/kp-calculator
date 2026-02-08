@@ -145,7 +145,7 @@ def export_kp_to_docx(df: pd.DataFrame, contract_type: str = "КП") -> bytes:
         # Описание / ГОСТ
         set_cell_text(table.cell(row_num, 2), str(row.get('Описание', '') or ''), align='left')
         # Ед. изм.
-        set_cell_text(table.cell(row_num, 3), str(row.get('Ед.изм.', 'кг')), align='center')
+        set_cell_text(table.cell(row_num, 3), str(row.get('Ед.изм.', '')), align='center')
         # Количество
         set_cell_text(table.cell(row_num, 4), format_number(qty, 0), align='center')
         # Цена за ед.

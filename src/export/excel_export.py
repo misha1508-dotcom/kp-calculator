@@ -112,7 +112,7 @@ def export_kp_to_excel(df: pd.DataFrame, contract_type: str = "КП") -> bytes:
         desc_cell.border = border
         desc_cell.alignment = Alignment(wrap_text=True, vertical='top')
 
-        ws.cell(row=row_idx, column=4, value=safe_str(row.get('Ед.изм.', 'кг'))).border = border
+        ws.cell(row=row_idx, column=4, value=safe_str(row.get('Ед.изм.', ''))).border = border
 
         qty = safe_float(row.get('Кол-во', 0))
         qty_cell = ws.cell(row=row_idx, column=5, value=qty)
@@ -223,7 +223,7 @@ def export_economics_to_excel(df: pd.DataFrame, contract_type: str = "КП") -> 
     for _, row in df.iterrows():
         ws.cell(row=row_idx, column=1, value=row.get('№', '')).border = border
         ws.cell(row=row_idx, column=2, value=safe_str(row.get('Наименование', ''))).border = border
-        ws.cell(row=row_idx, column=3, value=safe_str(row.get('Ед.изм.', 'кг'))).border = border
+        ws.cell(row=row_idx, column=3, value=safe_str(row.get('Ед.изм.', ''))).border = border
 
         qty = safe_float(row.get('Кол-во', 0))
         qty_cell = ws.cell(row=row_idx, column=4, value=qty)

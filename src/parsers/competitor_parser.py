@@ -138,7 +138,7 @@ def parse_competitor_docx(file: Union[str, BytesIO]) -> pd.DataFrame:
     for idx, row in main_table.iterrows():
         product_name = ""
         qty = 0
-        unit = "кг"
+        unit = ""
         price = 0
         total = 0
 
