@@ -356,10 +356,9 @@ def match_products(
             print(f"  ⚠️ Кол-во <= 0, пропускаем: {product_name[:50]}")
             continue
 
-        # Дубли
-        normalized = normalize_name(product_name)
-        qty_key = round(qty, 1)
-        dup_key = (normalized, qty_key)
+        # Дубли — по оригинальному названию (не нормализованному), чтобы не схлопнуть
+        # товары вроде "Молоко 2.5%" и "Молоко 3.2%"
+        dup_key = (product_name.lower().strip(), round(qty, 1))
         if dup_key in seen_products:
             continue
         seen_products[dup_key] = len(result_data)
