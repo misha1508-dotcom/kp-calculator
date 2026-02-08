@@ -387,7 +387,7 @@ def match_products(
 
         if cost_price <= 0:
             print(f"  ⚠️ Нет себестоимости: {product_name[:50]} (лучший: {cost_name[:40]}, скор: {cost_score})")
-            continue
+            tara_note = f"❌ Себес не найдена (лучший: {cost_name[:40]}, скор: {cost_score})"
 
         # Ищем цену конкурента — строго
         comp_match, comp_score, comp_name = find_best_match(product_name, competitor_df, 'Наименование')
