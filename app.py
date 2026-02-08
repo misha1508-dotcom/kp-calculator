@@ -328,7 +328,8 @@ if st.button("🧮 Рассчитать КП", type="primary", use_container_wid
         with st.spinner("Расчёт..."):
             dfs = []
 
-            # Матчинг РБ
+            # Матчинг и расчёт цен РАЗДЕЛЬНО по контрактам
+            # (скидка 0.1% должна быть по каждому контракту отдельно)
             if st.session_state.rb_request is not None:
                 matched_rb = match_products(
                     st.session_state.rb_request,
@@ -336,9 +337,9 @@ if st.button("🧮 Рассчитать КП", type="primary", use_container_wid
                     st.session_state.competitor_data
                 )
                 matched_rb['Контракт'] = 'РБ'
-                dfs.append(matched_rb)
+                priced_rb = calculate_prices(matched_rb)
+                dfs.append(priced_rb)
 
-            # Матчинг ФБ
             if st.session_state.fb_request is not None:
                 matched_fb = match_products(
                     st.session_state.fb_request,
@@ -346,14 +347,14 @@ if st.button("🧮 Рассчитать КП", type="primary", use_container_wid
                     st.session_state.competitor_data
                 )
                 matched_fb['Контракт'] = 'ФБ'
-                dfs.append(matched_fb)
+                priced_fb = calculate_prices(matched_fb)
+                dfs.append(priced_fb)
 
             # Объединяем и перенумеровываем
             combined = pd.concat(dfs, ignore_index=True)
             combined['№'] = range(1, len(combined) + 1)
 
-            # Расчёт цен (контрактная оптимизация на общую сумму)
-            st.session_state.calculated = calculate_prices(combined)
+            st.session_state.calculated = combined
             st.session_state.edited = st.session_state.calculated.copy()
             save_data('calculated', st.session_state.calculated)
             save_data('edited', st.session_state.edited)

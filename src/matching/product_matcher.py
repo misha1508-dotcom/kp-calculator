@@ -350,9 +350,11 @@ def match_products(
             print(f"  ⚠️ Пустое название, строка {idx}")
             product_name = f"(позиция {idx + 1} — без названия)"
 
+        qty_note = ''
         if qty > 100000:
             old_qty = qty
             qty = qty / 1000 if qty > 1000000 else qty / 100
+            qty_note = f"⚠️ Кол-во: {old_qty:.0f}→{qty:.0f}"
             print(f"  ⚠️ Кол-во скорректировано: {old_qty} → {qty} для «{product_name[:50]}»")
 
         # Ищем себестоимость
@@ -434,7 +436,7 @@ def match_products(
             'Цена конкурента': competitor_price if has_competitor else 0,
             'Есть конкурент': has_competitor,
             'Матч': match_info,
-            'Тара': tara_note,
+            'Тара': (qty_note + ' | ' + tara_note).strip(' |') if qty_note else tara_note,
         })
 
     result = pd.DataFrame(result_data)
