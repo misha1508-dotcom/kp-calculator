@@ -337,7 +337,6 @@ def match_products(
     Если нет матча конкурента — наша цена = себестоимость + 30%.
     """
     result_data = []
-    seen_products = {}
 
     for idx, request_row in request_df.iterrows():
         product_name = str(request_row.get('Наименование', ''))
@@ -345,7 +344,7 @@ def match_products(
         description = str(request_row.get('Описание', '') or '')
         unit = str(request_row.get('Ед.изм.', 'кг') or 'кг')
 
-        if not product_name:
+        if not product_name or product_name == 'nan':
             continue
 
         if qty > 100000:
@@ -355,13 +354,6 @@ def match_products(
         if qty <= 0:
             print(f"  ⚠️ Кол-во <= 0, пропускаем: {product_name[:50]}")
             continue
-
-        # Дубли — по оригинальному названию (не нормализованному), чтобы не схлопнуть
-        # товары вроде "Молоко 2.5%" и "Молоко 3.2%"
-        dup_key = (product_name.lower().strip(), round(qty, 1))
-        if dup_key in seen_products:
-            continue
-        seen_products[dup_key] = len(result_data)
 
         # Ищем себестоимость
         cost_match, cost_score, cost_name = find_best_match(product_name, cost_df, 'Наименование')
