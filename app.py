@@ -540,6 +540,9 @@ def render_contract_section(state_key, label, emoji, header_class, editor_key):
             data['Сумма'] = (data['Наша цена'] * data['Кол-во']).round(2)
             data['Маржа'] = (data['Наша цена'] - data['Себестоимость']).round(2)
             data['Маржа %'] = (data['Маржа'] / data['Наша цена'] * 100).replace([float('inf'), float('-inf')], 0).fillna(0).round(1)
+            # Очистить состояние editor-а чтобы старые правки не наложились
+            if editor_key in st.session_state:
+                del st.session_state[editor_key]
             save_data(state_key, data)
             st.rerun()
     with col_download:
@@ -570,78 +573,12 @@ if has_rb or has_fb:
     st.divider()
     st.subheader("📊 Сводка")
 
-    # Общий дашборд
-    if has_rb and has_fb:
-        rb_econ = calculate_economics(st.session_state.rb_data)
-        fb_econ = calculate_economics(st.session_state.fb_data)
-        combined = pd.concat([st.session_state.rb_data, st.session_state.fb_data], ignore_index=True)
-        total_econ = calculate_economics(combined)
-        total_margin_color = "green" if total_econ['margin_percent'] >= 0 else "red"
-        total_loss_color = "red" if total_econ['loss_positions'] > 0 else "green"
-
-        st.markdown(f"""
-        <div class="summary-row">
-            <div class="summary-card rb">
-                <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
-                <div class="summary-line">
-                    Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
-                    Скидка: <b>{rb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
-                    Убыт.: <b>{rb_econ['loss_positions']}</b>
-                </div>
-            </div>
-            <div class="summary-card fb">
-                <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
-                <div class="summary-line">
-                    Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
-                    Скидка: <b>{fb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
-                    Убыт.: <b>{fb_econ['loss_positions']}</b>
-                </div>
-            </div>
-            <div class="summary-card total">
-                <div class="summary-title">ИТОГО — {total_econ['total_positions']} поз.</div>
-                <div class="summary-line">
-                    Сумма: <b>{total_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Себес: <b>{total_econ['cost_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Маржа: <b>{total_econ['profit']:,.0f} ₽</b> ({total_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
-                    Убыт.: <b>{total_econ['loss_positions']}</b>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    elif has_rb:
-        rb_econ = calculate_economics(st.session_state.rb_data)
-        st.markdown(f"""
-        <div class="summary-row">
-            <div class="summary-card rb">
-                <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
-                <div class="summary-line">
-                    Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
-                    Скидка: <b>{rb_econ['discount_percent']:.2f}%</b>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    elif has_fb:
-        fb_econ = calculate_economics(st.session_state.fb_data)
-        st.markdown(f"""
-        <div class="summary-row">
-            <div class="summary-card fb">
-                <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
-                <div class="summary-line">
-                    Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
-                    Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
-                    Скидка: <b>{fb_econ['discount_percent']:.2f}%</b>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Плейсхолдер для общей сводки (заполним ПОСЛЕ секций контрактов, чтобы данные были актуальные)
+    summary_placeholder = st.container()
 
     st.caption("Редактируйте данные в таблицах ниже. Дашборд обновляется автоматически.")
 
-    # Секции контрактов
+    # Секции контрактов (синхронизируют правки из data_editor)
     if has_rb:
         st.divider()
         render_contract_section('rb_data', 'РБ', '🔵', 'contract-header-rb', 'rb_editor')
@@ -649,6 +586,74 @@ if has_rb or has_fb:
     if has_fb:
         st.divider()
         render_contract_section('fb_data', 'ФБ', '🟢', 'contract-header-fb', 'fb_editor')
+
+    # Заполняем сводку ПОСЛЕ синхронизации правок
+    with summary_placeholder:
+        if has_rb and has_fb:
+            rb_econ = calculate_economics(st.session_state.rb_data)
+            fb_econ = calculate_economics(st.session_state.fb_data)
+            combined = pd.concat([st.session_state.rb_data, st.session_state.fb_data], ignore_index=True)
+            total_econ = calculate_economics(combined)
+
+            st.markdown(f"""
+            <div class="summary-row">
+                <div class="summary-card rb">
+                    <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
+                    <div class="summary-line">
+                        Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                        Скидка: <b>{rb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
+                        Убыт.: <b>{rb_econ['loss_positions']}</b>
+                    </div>
+                </div>
+                <div class="summary-card fb">
+                    <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
+                    <div class="summary-line">
+                        Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                        Скидка: <b>{fb_econ['discount_percent']:.2f}%</b> &nbsp;|&nbsp;
+                        Убыт.: <b>{fb_econ['loss_positions']}</b>
+                    </div>
+                </div>
+                <div class="summary-card total">
+                    <div class="summary-title">ИТОГО — {total_econ['total_positions']} поз.</div>
+                    <div class="summary-line">
+                        Сумма: <b>{total_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Себес: <b>{total_econ['cost_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Маржа: <b>{total_econ['profit']:,.0f} ₽</b> ({total_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                        Убыт.: <b>{total_econ['loss_positions']}</b>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        elif has_rb:
+            rb_econ = calculate_economics(st.session_state.rb_data)
+            st.markdown(f"""
+            <div class="summary-row">
+                <div class="summary-card rb">
+                    <div class="summary-title">🔵 РБ — {rb_econ['total_positions']} поз.</div>
+                    <div class="summary-line">
+                        Сумма: <b>{rb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Маржа: <b>{rb_econ['profit']:,.0f} ₽</b> ({rb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                        Скидка: <b>{rb_econ['discount_percent']:.2f}%</b>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        elif has_fb:
+            fb_econ = calculate_economics(st.session_state.fb_data)
+            st.markdown(f"""
+            <div class="summary-row">
+                <div class="summary-card fb">
+                    <div class="summary-title">🟢 ФБ — {fb_econ['total_positions']} поз.</div>
+                    <div class="summary-line">
+                        Сумма: <b>{fb_econ['contract_total']:,.0f} ₽</b> &nbsp;|&nbsp;
+                        Маржа: <b>{fb_econ['profit']:,.0f} ₽</b> ({fb_econ['margin_percent']:.1f}%) &nbsp;|&nbsp;
+                        Скидка: <b>{fb_econ['discount_percent']:.2f}%</b>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # ============ ШАГ 3: Скачать документы ============
     st.divider()
